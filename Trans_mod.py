@@ -107,7 +107,7 @@ class AutoEncoder(nn.Module):
         s = 1 + 0.2 * self.decoder_scale(sv_emb).unsqueeze(-1)
         # B*1*1
         sv_a = self.encoder_sv_dict(sv_emb)
-        sv = 0.01 + self.decoder_sv_dict(sv_a).view(batch_size, -1, self.L)
+        sv = 0.01 * self.decoder_sv_dict(sv_a).view(batch_size, -1, self.L)
 
         re_result = torch.mul(re_pixel, s) + sv
 
@@ -132,13 +132,14 @@ class Train_test:
         self.save_dir = "trans_mod_" + dataset + "/"
         os.makedirs(self.save_dir, exist_ok=True)
         if dataset == 'samson':
+            self.dataset = 'samson'
             self.P, self.L, self.col = 3, 156, 95
             self.patch, self.dim = 3, 200
-            # self.LR, self.EPOCH = 5e-3, 500
-            # self.para_re, self.para_sad = 1e2, 0.5
-            # self.para_abu, self.para_sv_a = 1e-3, 5e-3
-            # self.para_orth, self.para_reg = 8e-3, 8e-3
-            # self.para_sv_L, self.para_minvol = 100, 1
+            # self.LR, self.EPOCH = 5e-3, 300
+            # self.para_re, self.para_sad = 1e2, 1e2
+            # self.para_abu, self.para_sv_a = 8e-3, 2e-3
+            # self.para_orth, self.para_reg = 9e-3, 5e-3
+            # self.para_sv_L, self.para_minvol = 90, 2e-3
             self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
                      self.para_sv_a, self.para_orth, self.para_reg,\
                      self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
@@ -150,16 +151,23 @@ class Train_test:
             # self.init_weight = self.data.get("init_weight").unsqueeze(2).unsqueeze(3).float()
             self.init_weight = self.data.get("init_weight").float()
         elif dataset == 'apex':
+            self.dataset = 'apex'
             self.P, self.L, self.col = 4, 285, 110
-            self.LR, self.EPOCH = 9e-3, 200
             self.patch, self.dim = 5, 200
+            self.LR, self.EPOCH = 9e-3, 200
+            self.para_re, self.para_sad = 1e2, 0.5
+            self.para_abu, self.para_sv_a = 1e-3, 5e-3
+            self.para_orth, self.para_reg = 8e-3, 8e-3
+            self.para_sv_L, self.para_minvol = 100, 1
             self.beta, self.gamma = 5e3, 5e-2
             self.weight_decay_param = 4e-5
+            self.batch = 1
             self.order_abd, self.order_endmem = (3, 1, 2, 0), (3, 1, 2, 0)
             self.data = datasets.Data(dataset, device)
-            self.loader = self.data.get_loader(batch_size=self.col ** 2)
-            self.init_weight = self.data.get("init_weight").unsqueeze(2).unsqueeze(3).float()
+            self.loader = self.data.get_loader(batch_size=(self.col ** 2 // self.batch))
+            self.init_weight = self.data.get("init_weight").float()
         elif dataset == 'dc':
+            self.dataset = 'dc'
             self.P, self.L, self.col = 6, 191, 290
             self.LR, self.EPOCH = 6e-3, 150
             self.patch, self.dim = 10, 400
@@ -322,7 +330,8 @@ class Train_test:
                 print("Class", i + 1, ":", sad_cls[i])
             print("Mean SAD:", mean_sad)
 
-        with open(self.save_dir + "log3.csv", 'a') as file:
+        with open(self.save_dir + "log5.csv", 'a') as file:
+            file.write(f"DataSet: {self.dataset}, ")
             file.write(f"LR: {self.LR}, ")
             file.write(f"EPOCH: {self.EPOCH}, ")
             file.write(f"Batch: {self.batch}, ")
@@ -332,8 +341,8 @@ class Train_test:
             file.write(f"para_sv_a: {self.para_sv_a}, ")
             file.write(f"para_orth: {self.para_orth}, ")
             file.write(f"para_reg: {self.para_reg}, ")
-            file.write(f"para_minvol: {self.para_minvol}, ")
             file.write(f"para_sv_L: {self.para_sv_L}, ")
+            file.write(f"para_minvol: {self.para_minvol}, ")
             file.write(f"WD: {self.weight_decay_param}, ")
             file.write(f"RE: {re:.4f}, ")
             file.write(f"SAD: {mean_sad:.4f}, ")

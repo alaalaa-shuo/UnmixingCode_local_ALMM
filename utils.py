@@ -9,8 +9,8 @@ def parameters(index=0, time_print=False):
     lr_range = np.linspace(5e-3, 5e-3, 1)
     epoch_range = np.linspace(300, 300, 1, dtype=int)
     re_range = np.linspace(1e2, 1e2, 1)
-    sad_range = np.linspace(2e-2, 8e-2, 4)
-    # abu_range = np.linspace(2e-3, 1e-2, 5)
+    # sad_range = np.linspace(2e-2, 8e-2, 4)
+    abu_range = np.linspace(2e-3, 1e-2, 5)
     sv_a_range = np.linspace(2e-3, 1e-2, 5)
     orth_range = np.linspace(1e-3, 9e-3, 5)
     reg_range = np.linspace(5e-3, 5e-3, 1)
@@ -18,8 +18,8 @@ def parameters(index=0, time_print=False):
     # minvol_range = np.linspace(2e-1, 1, 5)
 
     # re_range = np.arange(0, 100, 10)
-    # sad_range = np.concatenate((np.arange(0, 1, 0.05), np.arange(0, 1100, 100)), axis=0)
-    abu_range = np.concatenate((np.arange(0, 1, 0.05), np.arange(0, 1100, 100)), axis=0)
+    sad_range = np.concatenate((np.arange(0, 1, 0.05), np.arange(0, 1100, 100)), axis=0)
+    # abu_range = np.concatenate((np.arange(0, 1, 0.05), np.arange(0, 1100, 100)), axis=0)
     # reg_range = np.arange(0, 1, 0.005)
     minvol_range = np.arange(0, 1e-2, 0.002)
 
