@@ -81,6 +81,7 @@ class AutoEncoder(nn.Module):
         self.vtrans = transformer.ViT(image_size=size, patch_size=patch, L=self.L, dim=32, depth=2,
                                       heads=4, mlp_dim=12, pool='cls')
 
+        self.out_norm = nn.Sigmoid()
 
     @staticmethod
     def weights_init(m):
@@ -104,14 +105,18 @@ class AutoEncoder(nn.Module):
         res_sv = torch.sub(x, re_pixel)
         sv_emb = self.vtrans(feature_embedding, res_sv)
         # B*1*dim
-        s = 1 + 0.2 * self.decoder_scale(sv_emb).unsqueeze(-1)
+        s = 1 + 0.2*self.decoder_scale(sv_emb).unsqueeze(-1)
         # B*1*1
         sv_a = self.encoder_sv_dict(sv_emb)
-        sv = 0.01 * self.decoder_sv_dict(sv_a).view(batch_size, -1, self.L)
+        sv = self.decoder_sv_dict(sv_a).view(batch_size, -1, self.L)
 
+        # re_result = re_pixel
+        # re_result = re_pixel + sv
+        # re_result = torch.mul(re_pixel, s)
         re_result = torch.mul(re_pixel, s) + sv
+        re_result = torch.clamp(re_result, min=0.0, max=1.0)
 
-        return abu_est, re_result, sv_a
+        return abu_est, re_result, sv_a, re_pixel
 
 
 class NonZeroClipper(object):
@@ -135,14 +140,14 @@ class Train_test:
             self.dataset = 'samson'
             self.P, self.L, self.col = 3, 156, 95
             self.patch, self.dim = 3, 200
-            # self.LR, self.EPOCH = 5e-3, 300
-            # self.para_re, self.para_sad = 1e2, 1e2
-            # self.para_abu, self.para_sv_a = 8e-3, 2e-3
-            # self.para_orth, self.para_reg = 9e-3, 5e-3
-            # self.para_sv_L, self.para_minvol = 90, 2e-3
-            self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
-                     self.para_sv_a, self.para_orth, self.para_reg,\
-                     self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
+            self.LR, self.EPOCH = 5e-3, 200
+            self.para_re, self.para_sad = 1000, 0.3
+            self.para_abu, self.para_sv_a = 8e-3, 5e-2
+            self.para_orth, self.para_reg = 5e-3, 5e-3
+            self.para_sv_L, self.para_minvol = 90, 0
+            # self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
+            #          self.para_sv_a, self.para_orth, self.para_reg,\
+            #          self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
             self.weight_decay_param = 4e-5
             self.batch = 1
             self.order_abd, self.order_endmem = (0, 1, 2), (0, 1, 2)
@@ -227,11 +232,11 @@ class Train_test:
                     # B*1*L
                     patch = patch.view(batch_size, -1, 3, 3).to(self.device)
                     # B*L*9->B*L*3*3
-                    abu_est, re_result, sv_a = net(patch, x)
+                    abu_est, re_result, sv_a, re_pixel = net(patch, x)
                     # re_result = re_result.permute(0, 2, 1).view(1, -1, self.col, self.col)
                     # 1*N*L
 
-                    # constraints for sv endmember
+                    # constraints for endmember
                     endmember = net.state_dict()["decoder_a.0.weight"]
                     # L*P
                     em_bar = endmember.mean(dim=1, keepdim=True)
@@ -243,18 +248,22 @@ class Train_test:
                     _, sv_num = sv_dict.shape
                     loss_sv_orth = torch.norm(torch.mm(endmember.T, sv_dict), p='fro')
                     loss_sv_reg = torch.norm((torch.mm(sv_dict.T, sv_dict) - torch.eye(sv_num).to(self.device)))
-                    loss_sv_dict = self.para_orth * loss_sv_orth +  self.para_reg * loss_sv_reg
+                    loss_sv_dict = self.para_orth * loss_sv_orth + self.para_reg * loss_sv_reg
 
-                    # loss_abu = self.alpha * ((torch.sum(torch.norm(abu_est, p=1, dim=0))) / abu_est.numel())
-                    loss_abu = self.para_abu * (torch.sum(torch.norm(abu_est, p=1, dim=0)))
+                    # constraints for abundance
+                    loss_abu = self.para_abu * (torch.sum(torch.norm(abu_est, p=0.5, dim=0)))
 
                     loss_sv_a = self.para_sv_a * torch.norm(sv_a, p='fro')
 
-                    loss_re = self.para_re * loss_func(re_result, x)
-                    loss_sad = loss_func2(re_result.view(1, self.L, -1).transpose(1, 2),
-                                          x.view(1, self.L, -1).transpose(1, 2))
-                    loss_sad = self.para_sad * torch.sum(loss_sad).float()
+                    loss_re = self.para_re * loss_func(re_result, x) + 0.5 * self.para_re * loss_func(re_pixel, x)
 
+                    loss_sad_1 = loss_func2(re_result.view(1, self.L, -1).transpose(1, 2),
+                                          x.view(1, self.L, -1).transpose(1, 2))
+                    loss_sad_2 = loss_func2(re_pixel.view(1, self.L, -1).transpose(1, 2),
+                                            x.view(1, self.L, -1).transpose(1, 2))
+                    loss_sad = (self.para_sad * torch.sum(loss_sad_1) + 0.5*self.para_sad*torch.sum(loss_sad_2)).float()
+
+                    # total_loss = loss_re + loss_sad + loss_abu
                     total_loss = loss_re + loss_sad + loss_abu + loss_sv_a + loss_sv_dict + loss_minvol
 
                     optimizer.zero_grad()
@@ -292,7 +301,7 @@ class Train_test:
         x = x.view(-1, 1, self.L).to(self.device)
         # (N,L)->(N,1,L)
 
-        abu_est, re_result, _ = net(patch, x)
+        abu_est, re_result, _, _ = net(patch, x)
         # N*P N*1*L
         # abu_est = abu_est / (torch.sum(abu_est, dim=1))
         # (N*P)
@@ -330,7 +339,7 @@ class Train_test:
                 print("Class", i + 1, ":", sad_cls[i])
             print("Mean SAD:", mean_sad)
 
-        with open(self.save_dir + "log5.csv", 'a') as file:
+        with open(self.save_dir + "log7.csv", 'a') as file:
             file.write(f"DataSet: {self.dataset}, ")
             file.write(f"LR: {self.LR}, ")
             file.write(f"EPOCH: {self.EPOCH}, ")
