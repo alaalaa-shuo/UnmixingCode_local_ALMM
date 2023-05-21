@@ -11,6 +11,7 @@ import torch.nn.functional as F
 import datasets
 import plots
 import transformer
+from timm.models.vision_transformer import Mlp
 import utils
 import datetime
 
@@ -86,6 +87,13 @@ class AutoEncoder(nn.Module):
 
         self.out_norm = nn.Sigmoid()
 
+        self.norm = nn.LayerNorm(L)
+
+        self.mlp_sv = Mlp(in_features=L, hidden_features=2*L, act_layer=nn.GELU)
+
+        self.re_proj = nn.Linear(L, L)
+
+        self.x_proj = nn.Linear(L, L)
 
 
     @staticmethod
@@ -93,14 +101,21 @@ class AutoEncoder(nn.Module):
         if type(m) == nn.Conv2d:
             nn.init.kaiming_normal_(m.weight.data)
 
-    def sv_attention(self, x, re_pixel):
+    def sv_attention(self, x, re_pixel, feature_embedding):
         '''
         :param x:  Batch*1*Bands
         :param re_pixel: Batch*1*Bands
         :return: sv_emb: Batch*1*dim
         '''
+        x_proj = self.x_proj(x)
+        re_pixel_proj = self.re_proj(re_pixel)
+        res_sv = torch.sub(x_proj, re_pixel_proj)
+        res_sv = self.mlp_sv(res_sv)
+        # B*1*L
+        res_sv = self.norm(res_sv)
+        sv_emb = self.vtrans(feature_embedding, res_sv)
 
-
+        return sv_emb
 
     def forward(self, patch, x):
 
@@ -116,9 +131,12 @@ class AutoEncoder(nn.Module):
         re_pixel = self.decoder_a(abu_est)
         re_pixel = re_pixel.view(batch_size, 1, self.L)
 
-        res_sv = torch.sub(x, re_pixel)
-        sv_emb = self.vtrans(feature_embedding, res_sv)
-        # B*1*dim
+        sv_emb = self.sv_attention(x, re_pixel, feature_embedding)
+
+        # res_sv = torch.sub(x, re_pixel)
+        # sv_emb = self.vtrans(feature_embedding, res_sv)
+        # # B*1*dim
+
         s = 1 + 0.2*self.decoder_scale(sv_emb).unsqueeze(-1)
         # B*1*1
         sv_a = self.encoder_sv_dict(sv_emb)
@@ -155,14 +173,14 @@ class Train_test:
             self.dataset = 'samson'
             self.P, self.L, self.col = 3, 156, 95
             self.patch, self.dim = 3, 200
-            # self.LR, self.EPOCH = 5e-3, 300
-            # self.para_re, self.para_sad = 100, 0.3
-            # self.para_abu, self.para_sv_a = 4e-3, 8e-3
-            # self.para_orth, self.para_reg = 7e-3, 7e-3
-            # self.para_sv_L, self.para_minvol = 90, 0.8
-            self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
-                     self.para_sv_a, self.para_orth, self.para_reg,\
-                     self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
+            self.LR, self.EPOCH = 5e-3, 300
+            self.para_re, self.para_sad = 100, 0.3
+            self.para_abu, self.para_sv_a = 4e-3, 8e-3
+            self.para_orth, self.para_reg = 7e-3, 7e-3
+            self.para_sv_L, self.para_minvol = 90, 0.8
+            # self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
+            #          self.para_sv_a, self.para_orth, self.para_reg,\
+            #          self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
             self.weight_decay_param = 4e-5
             self.batch = 1
             self.order_abd, self.order_endmem = (0, 1, 2), (0, 1, 2)

@@ -162,9 +162,7 @@ class ViT(nn.Module):
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
 
         # self.mlp = Mlp(in_features=L, hidden_features=mlp_dim, out_features=dim // heads, act_layer=nn.GELU, drop=0)
-        self.linear_trans = nn.Sequential(
-            nn.Linear(L, 32)
-        )
+        self.linear_trans = nn.Linear(L, 32)
 
         self.heads = heads
         self.dim = dim
