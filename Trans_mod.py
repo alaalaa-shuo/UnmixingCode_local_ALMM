@@ -53,6 +53,9 @@ class AutoEncoder(nn.Module):
             nn.Sigmoid()
         )
 
+        for param in self.decoder_a.parameters():
+            param.requires_grad = False
+
         self.decoder_scale = nn.Sequential(
             nn.Linear(32, 16),
             # nn.BatchNorm1d(L//4),
@@ -83,10 +86,21 @@ class AutoEncoder(nn.Module):
 
         self.out_norm = nn.Sigmoid()
 
+
+
     @staticmethod
     def weights_init(m):
         if type(m) == nn.Conv2d:
             nn.init.kaiming_normal_(m.weight.data)
+
+    def sv_attention(self, x, re_pixel):
+        '''
+        :param x:  Batch*1*Bands
+        :param re_pixel: Batch*1*Bands
+        :return: sv_emb: Batch*1*dim
+        '''
+
+
 
     def forward(self, patch, x):
 
@@ -114,6 +128,7 @@ class AutoEncoder(nn.Module):
         # re_result = re_pixel + sv
         # re_result = torch.mul(re_pixel, s)
         re_result = torch.mul(re_pixel, s) + sv
+
         re_result = torch.clamp(re_result, min=0.0, max=1.0)
 
         return abu_est, re_result, sv_a, re_pixel
@@ -140,14 +155,14 @@ class Train_test:
             self.dataset = 'samson'
             self.P, self.L, self.col = 3, 156, 95
             self.patch, self.dim = 3, 200
-            self.LR, self.EPOCH = 5e-3, 200
-            self.para_re, self.para_sad = 1000, 0.3
-            self.para_abu, self.para_sv_a = 8e-3, 5e-2
-            self.para_orth, self.para_reg = 5e-3, 5e-3
-            self.para_sv_L, self.para_minvol = 90, 0
-            # self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
-            #          self.para_sv_a, self.para_orth, self.para_reg,\
-            #          self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
+            # self.LR, self.EPOCH = 5e-3, 300
+            # self.para_re, self.para_sad = 100, 0.3
+            # self.para_abu, self.para_sv_a = 4e-3, 8e-3
+            # self.para_orth, self.para_reg = 7e-3, 7e-3
+            # self.para_sv_L, self.para_minvol = 90, 0.8
+            self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
+                     self.para_sv_a, self.para_orth, self.para_reg,\
+                     self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
             self.weight_decay_param = 4e-5
             self.batch = 1
             self.order_abd, self.order_endmem = (0, 1, 2), (0, 1, 2)
@@ -251,19 +266,19 @@ class Train_test:
                     loss_sv_dict = self.para_orth * loss_sv_orth + self.para_reg * loss_sv_reg
 
                     # constraints for abundance
-                    loss_abu = self.para_abu * (torch.sum(torch.norm(abu_est, p=0.5, dim=0)))
+                    loss_abu = self.para_abu * (torch.sum(torch.norm(abu_est, p=1, dim=0)))
 
                     loss_sv_a = self.para_sv_a * torch.norm(sv_a, p='fro')
 
-                    loss_re = self.para_re * loss_func(re_result, x) + 0.5 * self.para_re * loss_func(re_pixel, x)
+                    loss_re = self.para_re * loss_func(re_result, x) + self.para_re * loss_func(re_pixel, x)
 
                     loss_sad_1 = loss_func2(re_result.view(1, self.L, -1).transpose(1, 2),
                                           x.view(1, self.L, -1).transpose(1, 2))
                     loss_sad_2 = loss_func2(re_pixel.view(1, self.L, -1).transpose(1, 2),
                                             x.view(1, self.L, -1).transpose(1, 2))
-                    loss_sad = (self.para_sad * torch.sum(loss_sad_1) + 0.5*self.para_sad*torch.sum(loss_sad_2)).float()
+                    loss_sad = self.para_sad * (torch.sum(loss_sad_1)+torch.sum(loss_sad_2)).float()
 
-                    # total_loss = loss_re + loss_sad + loss_abu
+                    # total_loss = loss_re + loss_sad + loss_abu + loss_minvol
                     total_loss = loss_re + loss_sad + loss_abu + loss_sv_a + loss_sv_dict + loss_minvol
 
                     optimizer.zero_grad()
@@ -339,7 +354,7 @@ class Train_test:
                 print("Class", i + 1, ":", sad_cls[i])
             print("Mean SAD:", mean_sad)
 
-        with open(self.save_dir + "log7.csv", 'a') as file:
+        with open(self.save_dir + "log9.csv", 'a') as file:
             file.write(f"DataSet: {self.dataset}, ")
             file.write(f"LR: {self.LR}, ")
             file.write(f"EPOCH: {self.EPOCH}, ")
