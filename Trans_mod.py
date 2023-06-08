@@ -54,8 +54,8 @@ class AutoEncoder(nn.Module):
             nn.Sigmoid()
         )
 
-        for param in self.decoder_a.parameters():
-            param.requires_grad = False
+        # for param in self.decoder_a.parameters():
+        #     param.requires_grad = False
 
         self.decoder_scale = nn.Sequential(
             nn.Linear(32, 16),
@@ -110,9 +110,10 @@ class AutoEncoder(nn.Module):
         x_proj = self.x_proj(x)
         re_pixel_proj = self.re_proj(re_pixel)
         res_sv = torch.sub(x_proj, re_pixel_proj)
+        res_sv = self.norm(res_sv)
+
         res_sv = self.mlp_sv(res_sv)
         # B*1*L
-        res_sv = self.norm(res_sv)
         sv_emb = self.vtrans(feature_embedding, res_sv)
 
         return sv_emb
@@ -173,15 +174,15 @@ class Train_test:
             self.dataset = 'samson'
             self.P, self.L, self.col = 3, 156, 95
             self.patch, self.dim = 3, 200
-            self.LR, self.EPOCH = 5e-3, 300
+            self.LR, self.EPOCH = 8e-3, 300
             self.para_re, self.para_sad = 100, 0.3
-            self.para_abu, self.para_sv_a = 4e-3, 8e-3
-            self.para_orth, self.para_reg = 7e-3, 7e-3
-            self.para_sv_L, self.para_minvol = 90, 0.8
+            self.para_abu, self.para_sv_a = 2e-3, 2e-3
+            self.para_orth, self.para_reg = 3e-3, 5e-3
+            self.para_sv_L, self.para_minvol = 90, 0.6
             # self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
             #          self.para_sv_a, self.para_orth, self.para_reg,\
             #          self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
-            self.weight_decay_param = 4e-5
+            self.weight_decay_param = 3e-5
             self.batch = 1
             self.order_abd, self.order_endmem = (0, 1, 2), (0, 1, 2)
             self.data = datasets.Data(dataset, device)
@@ -259,6 +260,12 @@ class Train_test:
             for epoch in range(self.EPOCH):
                 for i, patch in enumerate(self.loader):
                     # i指的是batchsize
+                    if epoch < 300:
+                        for param in net.decoder_a.parameters():
+                            param.requires_grad = False
+                    else:
+                        for param in net.decoder_a.parameters():
+                            param.requires_grad = True
 
                     batch_size, _, _ = patch.shape
                     x = patch[:, :, 4].view(batch_size, 1, self.L).to(self.device)
@@ -372,7 +379,10 @@ class Train_test:
                 print("Class", i + 1, ":", sad_cls[i])
             print("Mean SAD:", mean_sad)
 
-        with open(self.save_dir + "log9.csv", 'a') as file:
+            plots.plot_abundance(target, abu_est, self.P, self.save_dir)
+            plots.plot_endmembers(true_endmem, est_endmem, self.P, self.save_dir)
+
+        with open(self.save_dir + "log12.csv", 'a') as file:
             file.write(f"DataSet: {self.dataset}, ")
             file.write(f"LR: {self.LR}, ")
             file.write(f"EPOCH: {self.EPOCH}, ")
@@ -397,9 +407,6 @@ class Train_test:
             file.write(f"Class3_mse: {rmse_cls[2]:.4f}, ")
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             file.write(f"TIME:{current_time}\n")
-
-        # plots.plot_abundance(target, abu_est, self.P, self.save_dir)
-        # plots.plot_endmembers(true_endmem, est_endmem, self.P, self.save_dir)
 
 
         
