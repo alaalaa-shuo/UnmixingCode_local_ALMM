@@ -7,9 +7,9 @@ import itertools
 def parameters(index=0, time_print=False):
 
     lr_range = np.linspace(5e-3, 5e-3, 1)
-    epoch_range = np.linspace(500, 500, 1, dtype=int)
-    re_range = np.linspace(1e2, 1e2, 1)
-    sad_range = np.linspace(3e-1, 3e-1, 1)
+    epoch_range = np.linspace(300, 300, 1, dtype=int)
+    re_range = np.linspace(1e2, 1e3, 2)
+    sad_range = [1e-1, 1, 1e2]
     abu_range = np.linspace(1e-3, 1e-2, 10)
     sv_a_range = np.linspace(1e-3, 1e-2, 10)
     orth_range = np.linspace(1e-3, 1e-2, 10)

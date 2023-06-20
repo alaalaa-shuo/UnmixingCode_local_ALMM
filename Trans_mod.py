@@ -21,23 +21,27 @@ class AutoEncoder(nn.Module):
         super(AutoEncoder, self).__init__()
         self.P, self.L, self.size, self.dim = P, L, size, dim
         self.encoder_sv = nn.Sequential(
-            nn.Conv2d(L, 128, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0)),
-            nn.BatchNorm2d(128, momentum=0.5),
+            nn.Conv2d(L, 64, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0)),
+            nn.BatchNorm2d(64, momentum=0.5),
             nn.Dropout(0.25),
             nn.LeakyReLU(),
-            nn.Conv2d(128, 64, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0)),
-            nn.BatchNorm2d(64, momentum=0.5),
-            nn.LeakyReLU(),
+            # nn.Conv2d(128, 64, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0)),
+            # nn.BatchNorm2d(64, momentum=0.5),
+            # nn.LeakyReLU(),
             nn.Conv2d(64, 32, kernel_size=(1, 1), stride=(1, 1), padding=(0, 0)),
             nn.BatchNorm2d(32, momentum=0.5),
         )
 
         self.encoder_spe = nn.Sequential(
-            nn.Linear(L, 128),
+            nn.Linear(L, 64),
+            nn.BatchNorm1d(64),
+            nn.Dropout(p=0.2),
             nn.LeakyReLU(),
-            nn.Linear(128, 64),
-            nn.LeakyReLU(),
+            # nn.Linear(128, 64),
+            # nn.BatchNorm1d(64),
+            # nn.LeakyReLU(),
             nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
             nn.LeakyReLU(),
         )
 
@@ -59,18 +63,18 @@ class AutoEncoder(nn.Module):
 
         self.decoder_scale = nn.Sequential(
             nn.Linear(32, 16),
-            # nn.BatchNorm1d(L//4),
+            nn.BatchNorm1d(16),
             nn.LeakyReLU(),
             nn.Linear(16, 1),
-            # nn.BatchNorm1d(L//2),
+            nn.BatchNorm1d(1),
             nn.Tanh()
         )
 
         self.encoder_sv_dict = nn.Sequential(
-            nn.Linear(32, L//4),
-            nn.BatchNorm1d(L//4),
+            nn.Linear(32, L//2),
+            nn.BatchNorm1d(L//2),
             nn.LeakyReLU(),
-            nn.Linear(L//4, sv_L),
+            nn.Linear(L//2, sv_L),
             nn.Softmax(dim=1)
         )
 
@@ -91,9 +95,7 @@ class AutoEncoder(nn.Module):
 
         self.mlp_sv = Mlp(in_features=L, hidden_features=2*L, act_layer=nn.GELU)
 
-        self.re_proj = nn.Linear(L, L)
-
-        self.x_proj = nn.Linear(L, L)
+        self.projection = nn.Linear(L, L)
 
 
     @staticmethod
@@ -107,8 +109,8 @@ class AutoEncoder(nn.Module):
         :param re_pixel: Batch*1*Bands
         :return: sv_emb: Batch*1*dim
         '''
-        x_proj = self.x_proj(x)
-        re_pixel_proj = self.re_proj(re_pixel)
+        x_proj = self.projection(x)
+        re_pixel_proj = self.projection(re_pixel)
         res_sv = torch.sub(x_proj, re_pixel_proj)
         res_sv = self.norm(res_sv)
 
@@ -125,8 +127,8 @@ class AutoEncoder(nn.Module):
         # B*C*3*3
         feature_embedding = feature_map.clone().view(batch_size, channel, -1).transpose(1, 2)
         # B*9*C
-        spe_est = self.encoder_spe(x)
-        spe_emb = self.msa(feature_embedding, spe_est)
+        spe_est = self.encoder_spe(x.view(batch_size, self.L))
+        spe_emb = self.msa(feature_embedding, spe_est.view(batch_size, 1, channel))
         abu_est = self.encoder_a(spe_emb)
 
         re_pixel = self.decoder_a(abu_est)
@@ -138,7 +140,7 @@ class AutoEncoder(nn.Module):
         # sv_emb = self.vtrans(feature_embedding, res_sv)
         # # B*1*dim
 
-        s = 1 + 0.2*self.decoder_scale(sv_emb).unsqueeze(-1)
+        s = 1 + 0.3*self.decoder_scale(sv_emb.squeeze(1)).unsqueeze(-1)
         # B*1*1
         sv_a = self.encoder_sv_dict(sv_emb)
         sv = self.decoder_sv_dict(sv_a).view(batch_size, -1, self.L)
@@ -192,13 +194,15 @@ class Train_test:
         elif dataset == 'apex':
             self.dataset = 'apex'
             self.P, self.L, self.col = 4, 285, 110
-            self.patch, self.dim = 5, 200
-            self.LR, self.EPOCH = 9e-3, 200
-            self.para_re, self.para_sad = 1e2, 0.5
-            self.para_abu, self.para_sv_a = 1e-3, 5e-3
-            self.para_orth, self.para_reg = 8e-3, 8e-3
-            self.para_sv_L, self.para_minvol = 100, 1
-            self.beta, self.gamma = 5e3, 5e-2
+            self.patch, self.dim = 3, 200
+            # self.LR, self.EPOCH = 8e-3, 300
+            # self.para_re, self.para_sad = 1e2, 0.3
+            # self.para_abu, self.para_sv_a = 2e-3, 2e-3
+            # self.para_orth, self.para_reg = 3e-3, 5e-3
+            # self.para_sv_L, self.para_minvol = 90, 0.6
+            self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
+                     self.para_sv_a, self.para_orth, self.para_reg,\
+                     self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
             self.weight_decay_param = 4e-5
             self.batch = 1
             self.order_abd, self.order_endmem = (3, 1, 2, 0), (3, 1, 2, 0)
@@ -260,7 +264,7 @@ class Train_test:
             for epoch in range(self.EPOCH):
                 for i, patch in enumerate(self.loader):
                     # i指的是batchsize
-                    if epoch < 300:
+                    if epoch < 100:
                         for param in net.decoder_a.parameters():
                             param.requires_grad = False
                     else:
@@ -295,13 +299,15 @@ class Train_test:
 
                     loss_sv_a = self.para_sv_a * torch.norm(sv_a, p='fro')
 
+                    # loss_re = self.para_re * loss_func(re_pixel, x)
                     loss_re = self.para_re * loss_func(re_result, x) + self.para_re * loss_func(re_pixel, x)
 
                     loss_sad_1 = loss_func2(re_result.view(1, self.L, -1).transpose(1, 2),
                                           x.view(1, self.L, -1).transpose(1, 2))
                     loss_sad_2 = loss_func2(re_pixel.view(1, self.L, -1).transpose(1, 2),
                                             x.view(1, self.L, -1).transpose(1, 2))
-                    loss_sad = self.para_sad * (torch.sum(loss_sad_1)+torch.sum(loss_sad_2)).float()
+                    # loss_sad = self.para_sad * torch.sum(loss_sad_1).float()
+                    loss_sad = self.para_sad * (torch.sum(loss_sad_1) + torch.sum(loss_sad_2)).float()
 
                     # total_loss = loss_re + loss_sad + loss_abu + loss_minvol
                     total_loss = loss_re + loss_sad + loss_abu + loss_sv_a + loss_sv_dict + loss_minvol
@@ -382,7 +388,7 @@ class Train_test:
             plots.plot_abundance(target, abu_est, self.P, self.save_dir)
             plots.plot_endmembers(true_endmem, est_endmem, self.P, self.save_dir)
 
-        with open(self.save_dir + "log12.csv", 'a') as file:
+        with open(self.save_dir + "log3.csv", 'a') as file:
             file.write(f"DataSet: {self.dataset}, ")
             file.write(f"LR: {self.LR}, ")
             file.write(f"EPOCH: {self.EPOCH}, ")

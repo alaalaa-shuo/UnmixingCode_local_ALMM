@@ -22,11 +22,11 @@ times = utils.parameters(time_print=True)
 #
 # random
 
-# run_list = random.sample(range(times), times)
-# for ind in tqdm(run_list):
-#     tmod = Trans_mod.Train_test(dataset='samson', device=device, skip_train=False, save=True, index=ind)
-#     tmod.run(smry=False)
+run_list = random.sample(range(times), times)
+for ind in tqdm(run_list):
+    tmod = Trans_mod.Train_test(dataset='apex', device=device, skip_train=False, save=True, index=ind)
+    tmod.run(smry=False)
 
-print("\nSelected device:", device, end="\n\n")
-tmod = Trans_mod.Train_test(dataset='samson', device=device, skip_train=False, save=True, data_print=True)
-tmod.run(smry=False)
+# print("\nSelected device:", device, end="\n\n")
+# tmod = Trans_mod.Train_test(dataset='samson', device=device, skip_train=False, save=True, data_print=True)
+# tmod.run(smry=False)
