@@ -181,9 +181,11 @@ class Train_test:
             self.para_abu, self.para_sv_a = 2e-3, 2e-3
             self.para_orth, self.para_reg = 3e-3, 5e-3
             self.para_sv_L, self.para_minvol = 90, 0.6
-            # self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
-            #          self.para_sv_a, self.para_orth, self.para_reg,\
-            #          self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
+            if not self.print:
+                self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
+                         self.para_sv_a, self.para_orth, self.para_reg,\
+                         self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
+
             self.weight_decay_param = 3e-5
             self.batch = 1
             self.order_abd, self.order_endmem = (0, 1, 2), (0, 1, 2)
@@ -220,6 +222,27 @@ class Train_test:
             self.data = datasets.Data(dataset, device)
             self.loader = self.data.get_loader(batch_size=self.col ** 2)
             self.init_weight = self.data.get("init_weight").unsqueeze(2).unsqueeze(3).float()
+        elif dataset == 'jasper':
+            self.dataset = 'samson'
+            self.P, self.L, self.col = 4, 198, 100
+            self.patch, self.dim = 3, 200
+            self.LR, self.EPOCH = 8e-3, 200
+            self.para_re, self.para_sad = 100, 0.3
+            self.para_abu, self.para_sv_a = 2e-3, 2e-3
+            self.para_orth, self.para_reg = 3e-3, 5e-3
+            self.para_sv_L, self.para_minvol = 90, 0.6
+            if not self.print:
+                self.LR, self.EPOCH, self.para_re, self.para_sad, self.para_abu, \
+                    self.para_sv_a, self.para_orth, self.para_reg, \
+                    self.para_sv_L, self.para_minvol = utils.parameters(index, time_print=False)
+
+            self.weight_decay_param = 3e-5
+            self.batch = 1
+            self.order_abd, self.order_endmem = (0, 3, 1, 2), (0, 3, 1, 2)
+            self.data = datasets.Data(dataset, device)
+            self.loader = self.data.get_loader(batch_size=(self.col ** 2 // self.batch))
+            # self.init_weight = self.data.get("init_weight").unsqueeze(2).unsqueeze(3).float()
+            self.init_weight = self.data.get("init_weight").float()
         else:
             raise ValueError("Unknown dataset")
 
@@ -264,7 +287,7 @@ class Train_test:
             for epoch in range(self.EPOCH):
                 for i, patch in enumerate(self.loader):
                     # i指的是batchsize
-                    if epoch < 100:
+                    if epoch < 0:
                         for param in net.decoder_a.parameters():
                             param.requires_grad = False
                     else:
@@ -388,7 +411,7 @@ class Train_test:
             plots.plot_abundance(target, abu_est, self.P, self.save_dir)
             plots.plot_endmembers(true_endmem, est_endmem, self.P, self.save_dir)
 
-        with open(self.save_dir + "log3.csv", 'a') as file:
+        with open(self.save_dir + "log1.csv", 'a') as file:
             file.write(f"DataSet: {self.dataset}, ")
             file.write(f"LR: {self.LR}, ")
             file.write(f"EPOCH: {self.EPOCH}, ")
@@ -407,10 +430,14 @@ class Train_test:
             file.write(f"Class1_sad: {sad_cls[0]:.4f}, ")
             file.write(f"Class2_sad: {sad_cls[1]:.4f}, ")
             file.write(f"Class3_sad: {sad_cls[2]:.4f}, ")
+            if self.P==4:
+                file.write(f"Class4_sad: {sad_cls[3]:.4f}, ")
             file.write(f"RMSE: {mean_rmse:.4f}, ")
             file.write(f"Class1_mse: {rmse_cls[0]:.4f}, ")
             file.write(f"Class2_mse: {rmse_cls[1]:.4f}, ")
             file.write(f"Class3_mse: {rmse_cls[2]:.4f}, ")
+            if self.P == 4:
+                file.write(f"Class4_mse: {rmse_cls[3]:.4f}, ")
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             file.write(f"TIME:{current_time}\n")
 

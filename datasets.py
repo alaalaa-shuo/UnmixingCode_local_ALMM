@@ -2,6 +2,7 @@ import torch.utils.data
 import scipy.io as sio
 import torchvision.transforms as transforms
 import torch.nn.functional as F
+import numpy as np
 
 
 class TrainData(torch.utils.data.Dataset):
